@@ -2,6 +2,7 @@ package com.thegbfoods.aica_rca_java;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.microsoft.azure.functions.ExecutionContext;
 import com.microsoft.azure.functions.HttpMethod;
 import com.microsoft.azure.functions.HttpRequestMessage;
@@ -44,7 +45,8 @@ public class NewFoodContract {
     @FunctionName("NewFoodContract")
     public HttpResponseMessage run(
             @HttpTrigger(name = "req", methods = {
-                    HttpMethod.POST }, authLevel = AuthorizationLevel.FUNCTION) HttpRequestMessage<Optional<String>> request,
+                    HttpMethod.POST
+            }, authLevel = AuthorizationLevel.FUNCTION) HttpRequestMessage<Optional<String>> request,
             final ExecutionContext context) {
         context.getLogger().info("Java HTTP trigger processed a request.");
 
@@ -57,23 +59,65 @@ public class NewFoodContract {
             jsonNode = mapper.readTree(requestBody);
         } catch (Exception e) {
             return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
-                    .body("Invalid JSON format.")
+                    .body("Error: Failed to read JSON input")
                     .build();
         }
 
-        // Validate JSON parameters
-        if (!jsonNode.has("file_content") || !jsonNode.has("file_name") || !jsonNode.has("company_id")
-                || !jsonNode.has("producer_id")) {
+        // Retrieve company_id and producer_id
+        String companyId = null;
+        String producerId = null;
+        try {
+            JsonNode textCustomFields = jsonNode.get("data").get("envelopeSummary").get("customFields")
+                    .get("textCustomFields");
+            if (textCustomFields.isArray()) {
+                for (JsonNode envelopeDocument : (ArrayNode) textCustomFields) {
+                    if (envelopeDocument.path("name").asText().equals("company ID")) {
+                        companyId = envelopeDocument.get("value").asText();
+                    } else if (envelopeDocument.path("name").asText().equals("producer ID")) {
+                        producerId = envelopeDocument.get("value").asText();
+                    }
+                }
+            }
+            if (companyId == null) {
+                return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
+                        .body("Error: Couldn't find company_id.")
+                        .build();
+            }
+            if (producerId == null) {
+                return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
+                        .body("Error: Couldn't find producer_id.")
+                        .build();
+            }
+        } catch (Exception e) {
             return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
-                    .body("Missing required parameters.")
+                    .body("Error: Failed to parse text custom fields.")
                     .build();
         }
 
-        // Extract parameters
-        String fileContentBase64 = jsonNode.get("file_content").asText();
-        String fileName = jsonNode.get("file_name").asText();
-        String companyId = jsonNode.get("company_id").asText();
-        String producerId = jsonNode.get("producer_id").asText();
+        // Retrieve contract content and name
+        String fileContentBase64 = null;
+        String fileName = null;
+        try {
+            JsonNode envelopeDocuments = jsonNode.get("data").get("envelopeSummary").path("envelopeDocuments");
+
+            if (envelopeDocuments.isArray()) {
+                for (JsonNode envelopeDocument : (ArrayNode) envelopeDocuments) {
+                    if (!envelopeDocument.path("documentId").asText().equals("certificate")) {
+                        fileContentBase64 = envelopeDocument.get("PDFBytes").asText();
+                        fileName = envelopeDocument.get("name").asText();
+                    }
+                }
+            }
+            if (fileContentBase64 == null) {
+                return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
+                        .body("Error: Couldn't find contract.")
+                        .build();
+            }
+        } catch (Exception e) {
+            return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
+                    .body("Error: Failed to parse envelope documents.")
+                    .build();
+        }
 
         // Convert Base64 file to a temporary file
         File tempFile;
@@ -85,24 +129,20 @@ public class NewFoodContract {
             }
         } catch (Exception e) {
             return request.createResponseBuilder(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error processing file.")
+                    .body("Error: Failed to process contract.")
                     .build();
         }
 
         // Create JSON for company_id and producer_id
         String jsonPart;
         try {
-            // ObjectNode jsonObject = mapper.createObjectNode();
-            // jsonObject.put("company_id", companyId);
-            // jsonObject.put("producer_id", producerId);
-            // jsonPart = mapper.writeValueAsString(jsonObject);
             jsonPart = mapper.createObjectNode()
                     .put("company_id", companyId)
                     .put("producer_id", producerId)
                     .toString();
         } catch (Exception e) {
             return request.createResponseBuilder(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error creating JSON part.")
+                    .body("Error: Failed to create JSON for company_id and producer_id.")
                     .build();
         }
 
@@ -113,7 +153,7 @@ public class NewFoodContract {
             authToken = getOAuthToken(context);
         } catch (Exception e) {
             return request.createResponseBuilder(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error obtaining OAuth2 token: " + e.getMessage())
+                    .body("Error: Failed to obtain OAuth2 token: " + e.getMessage())
                     .build();
         }
 
@@ -140,7 +180,7 @@ public class NewFoodContract {
             }
         } catch (Exception e) {
             return request.createResponseBuilder(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error sending POST request: " + e.getMessage())
+                    .body("Error: Failed to send POST request: " + e.getMessage())
                     .build();
         }
     }
@@ -157,8 +197,8 @@ public class NewFoodContract {
             String tokenUrl = "https://integra-servicio.mapa.gob.es/wsregcontratosaica/oauth/token";
             String clientId = "3NWT3I";
             String clientSecret = "b72q:0v2B1bZe.xd";
-            String tokenRequestPayload = "grant_type=client_credentials&client_id=" + clientId + "&client_secret="
-                    + clientSecret;
+            String tokenRequestPayload = "grant_type=client_credentials&client_id=" + clientId + "&client_secret=" +
+                    clientSecret;
             Long expiresIn = null;
 
             HttpPost tokenRequest = new HttpPost(tokenUrl);
