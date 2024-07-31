@@ -1,5 +1,9 @@
 package com.thegbfoods.aica_rca_java;
 
+import com.azure.identity.DefaultAzureCredentialBuilder;
+import com.azure.security.keyvault.secrets.SecretClient;
+import com.azure.security.keyvault.secrets.SecretClientBuilder;
+import com.azure.security.keyvault.secrets.models.KeyVaultSecret;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -193,10 +197,34 @@ public class NewFoodContract {
                 return oauthToken;
             }
 
-            // Request new token
-            String tokenUrl = "https://integra-servicio.mapa.gob.es/wsregcontratosaica/oauth/token";
+            // Retrieve ClientId and ClientSecret from Azure Key Vault in DEV or PRD
+            String keyVaultUri = "https://kv-docusign-integration.vault.azure.net";
+            String kvsPrefix;
+            String mode = System.getProperty("mode");
+
+            if (mode == null || mode.equals("debug")) {
+                kvsPrefix = "DEV";
+            } else {
+                kvsPrefix = "PRD";
+            }
+
             String clientId = "3NWT3I";
             String clientSecret = "b72q:0v2B1bZe.xd";
+            try {
+                SecretClient secretClient = new SecretClientBuilder()
+                        .vaultUrl(keyVaultUri)
+                        .credential(new DefaultAzureCredentialBuilder().build())
+                        .buildClient();
+                KeyVaultSecret kvsClientId = secretClient.getSecret(kvsPrefix + "-AICA-CLIENT-ID");
+                KeyVaultSecret kvsClientSecret = secretClient.getSecret(kvsPrefix + "DEV-AICA-CLIENT-ID");
+                clientId = kvsClientId.getValue();
+                clientSecret = kvsClientSecret.getValue();
+            } catch (Exception e) {
+                // throw new Exception("Error while retrieving Azure Key Vault secrets");
+            }
+
+            // Request new token
+            String tokenUrl = "https://integra-servicio.mapa.gob.es/wsregcontratosaica/oauth/token";
             String tokenRequestPayload = "grant_type=client_credentials&client_id=" + clientId + "&client_secret=" +
                     clientSecret;
             Long expiresIn = null;
