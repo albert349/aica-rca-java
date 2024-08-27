@@ -67,6 +67,19 @@ public class NewFoodContract {
                     .build();
         }
 
+        // Return 204 if envelope is not completed
+        try {
+            JsonNode event = jsonNode.get("event");
+            if (event == null || event.isNull() || !event.asText().equals("envelope-completed")) {
+                return request.createResponseBuilder(HttpStatus.NO_CONTENT)
+                        .build();
+            }
+        } catch (Exception e) {
+            return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
+                    .body("Error: Failed to parse event.")
+                    .build();
+        }
+
         // Retrieve company_id and producer_id
         String companyId = null;
         String producerId = null;
@@ -75,9 +88,9 @@ public class NewFoodContract {
                     .get("textCustomFields");
             if (textCustomFields.isArray()) {
                 for (JsonNode envelopeDocument : (ArrayNode) textCustomFields) {
-                    if (envelopeDocument.path("name").asText().equals("company ID")) {
+                    if (envelopeDocument.path("name").asText().equals("Enterprise ID")) {
                         companyId = envelopeDocument.get("value").asText();
-                    } else if (envelopeDocument.path("name").asText().equals("producer ID")) {
+                    } else if (envelopeDocument.path("name").asText().equals("Provider ID")) {
                         producerId = envelopeDocument.get("value").asText();
                     }
                 }
@@ -178,6 +191,7 @@ public class NewFoodContract {
                 String responseBody = EntityUtils.toString(response.getEntity());
                 int statusCode = response.getStatusLine().getStatusCode();
 
+                // Return success
                 return request.createResponseBuilder(HttpStatus.valueOf(statusCode))
                         .body(responseBody)
                         .build();
