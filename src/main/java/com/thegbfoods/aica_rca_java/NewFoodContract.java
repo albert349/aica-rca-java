@@ -52,18 +52,27 @@ public class NewFoodContract {
                     HttpMethod.POST
             }, authLevel = AuthorizationLevel.FUNCTION) HttpRequestMessage<Optional<String>> request,
             final ExecutionContext context) {
-        context.getLogger().info("Java HTTP trigger processed a request.");
-
         // Parse the request body
         String requestBody = request.getBody().orElse("");
         ObjectMapper mapper = new ObjectMapper();
         JsonNode jsonNode;
-
         try {
             jsonNode = mapper.readTree(requestBody);
         } catch (Exception e) {
+            context.getLogger().severe("Error: Failed to read JSON input");
             return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
                     .body("Error: Failed to read JSON input")
+                    .build();
+        }
+
+        // Retrieve envelopeId
+        String envelopeId = null;
+        try {
+            envelopeId = jsonNode.get("data").get("envelopeId").asText();
+        } catch (Exception e) {
+            context.getLogger().severe(envelopeId + " | Error: Couldn't find envelopeId.");
+            return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
+                    .body(envelopeId + " | Error: Couldn't find envelopeId.")
                     .build();
         }
 
@@ -71,12 +80,14 @@ public class NewFoodContract {
         try {
             JsonNode event = jsonNode.get("event");
             if (event == null || event.isNull() || !event.asText().equals("envelope-completed")) {
+                context.getLogger().fine(envelopeId + " | Envelope is not completed.");
                 return request.createResponseBuilder(HttpStatus.NO_CONTENT)
                         .build();
             }
         } catch (Exception e) {
+            context.getLogger().severe(envelopeId + " | Error: Failed to parse event.");
             return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
-                    .body("Error: Failed to parse event.")
+                    .body(envelopeId + " | Error: Failed to parse event.")
                     .build();
         }
 
@@ -95,19 +106,23 @@ public class NewFoodContract {
                     }
                 }
             }
+
             if (companyId == null) {
+                context.getLogger().severe(envelopeId + " | Error: Couldn't find company_id.");
                 return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
-                        .body("Error: Couldn't find company_id.")
+                        .body(envelopeId + " | Error: Couldn't find company_id.")
                         .build();
             }
             if (producerId == null) {
+                context.getLogger().severe(envelopeId + " | Error: Couldn't find producer_id.");
                 return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
-                        .body("Error: Couldn't find producer_id.")
+                        .body(envelopeId + " | Error: Couldn't find producer_id.")
                         .build();
             }
         } catch (Exception e) {
+            context.getLogger().severe(envelopeId + " | Error: Failed to parse text custom fields.");
             return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
-                    .body("Error: Failed to parse text custom fields.")
+                    .body(envelopeId + " | Error: Failed to parse text custom fields.")
                     .build();
         }
 
@@ -126,13 +141,15 @@ public class NewFoodContract {
                 }
             }
             if (fileContentBase64 == null) {
+                context.getLogger().severe(envelopeId + " | Error: Failed to parse envelope documents.");
                 return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
-                        .body("Error: Couldn't find contract.")
+                        .body(envelopeId + " | Error: Couldn't find contract.")
                         .build();
             }
         } catch (Exception e) {
+            context.getLogger().severe(envelopeId + " | Error: Failed to parse envelope documents.");
             return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
-                    .body("Error: Failed to parse envelope documents.")
+                    .body(envelopeId + " | Error: Failed to parse envelope documents.")
                     .build();
         }
 
@@ -145,8 +162,9 @@ public class NewFoodContract {
                 fos.write(fileBytes);
             }
         } catch (Exception e) {
+            context.getLogger().severe(envelopeId + " | Error: Failed to process contract.");
             return request.createResponseBuilder(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error: Failed to process contract.")
+                    .body(envelopeId + " | Error: Failed to process contract.")
                     .build();
         }
 
@@ -158,8 +176,9 @@ public class NewFoodContract {
                     .put("producer_id", producerId)
                     .toString();
         } catch (Exception e) {
+            context.getLogger().severe(envelopeId + " | Error: Failed to create JSON for company_id and producer_id.");
             return request.createResponseBuilder(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error: Failed to create JSON for company_id and producer_id.")
+                    .body(envelopeId + " | Error: Failed to create JSON for company_id and producer_id.")
                     .build();
         }
 
@@ -167,10 +186,17 @@ public class NewFoodContract {
         String apiUrl = "https://integra-servicio.mapa.gob.es/wsregcontratosaica/servicioweb/nuevocontrato";
         String authToken;
         try {
-            authToken = getOAuthToken(context);
+            authToken = getOAuthToken(context, envelopeId);
+            if (authToken == null) {
+                context.getLogger().severe(envelopeId + " | Error: Failed to obtain OAuth2 token.");
+                return request.createResponseBuilder(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(envelopeId + " | Error: Failed to obtain OAuth2 token.")
+                    .build();
+        }
         } catch (Exception e) {
+            context.getLogger().severe(envelopeId + " | Error: Failed to obtain OAuth2 token: " + e.getMessage());
             return request.createResponseBuilder(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error: Failed to obtain OAuth2 token: " + e.getMessage())
+                    .body(envelopeId + " | Error: Failed to obtain OAuth2 token: " + e.getMessage())
                     .build();
         }
 
@@ -192,18 +218,20 @@ public class NewFoodContract {
                 int statusCode = response.getStatusLine().getStatusCode();
 
                 // Return success
+                context.getLogger().info(envelopeId + " | Successfully created new contract to AICA RCA.");
                 return request.createResponseBuilder(HttpStatus.valueOf(statusCode))
                         .body(responseBody)
                         .build();
             }
         } catch (Exception e) {
+            context.getLogger().severe(envelopeId + " | Error: Failed to send POST request: " + e.getMessage());
             return request.createResponseBuilder(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error: Failed to send POST request: " + e.getMessage())
+                    .body(envelopeId + " | Error: Failed to send POST request: " + e.getMessage())
                     .build();
         }
     }
 
-    private String getOAuthToken(ExecutionContext context) throws Exception {
+    private String getOAuthToken(ExecutionContext context, String envelopeId) throws Exception {
         lock.lock();
         try {
             // Check if token is still valid
@@ -214,9 +242,9 @@ public class NewFoodContract {
             // Retrieve ClientId and ClientSecret from Azure Key Vault in DEV or PRD
             String keyVaultUri = "https://kv-docusign-integration.vault.azure.net";
             String kvsPrefix;
-            String mode = System.getProperty("mode");
+            String mode = System.getenv("mode");
 
-            if (mode == null || mode.equals("debug")) {
+            if (mode == null || mode.equals("DEV")) {
                 kvsPrefix = "DEV";
             } else {
                 kvsPrefix = "PRD";
@@ -230,11 +258,12 @@ public class NewFoodContract {
                         .credential(new DefaultAzureCredentialBuilder().build())
                         .buildClient();
                 KeyVaultSecret kvsClientId = secretClient.getSecret(kvsPrefix + "-AICA-CLIENT-ID");
-                KeyVaultSecret kvsClientSecret = secretClient.getSecret(kvsPrefix + "DEV-AICA-CLIENT-ID");
+                KeyVaultSecret kvsClientSecret = secretClient.getSecret(kvsPrefix + "-AICA-CLIENT-SECRET");
                 clientId = kvsClientId.getValue();
                 clientSecret = kvsClientSecret.getValue();
             } catch (Exception e) {
-                // throw new Exception("Error while retrieving Azure Key Vault secrets");
+                context.getLogger().severe(envelopeId + " | Error while retrieving Azure Key Vault secrets: " + e.getMessage())
+                throw new Exception(envelopeId + " | Error while retrieving Azure Key Vault secrets: " + e.getMessage());
             }
 
             // Request new token
@@ -259,6 +288,9 @@ public class NewFoodContract {
                 tokenExpiryTime = Instant.now().plusSeconds(expiresIn).minusSeconds(60);
 
                 return oauthToken;
+            } catch (Exception e) {
+                context.getLogger().severe(envelopeId + " | Error while executing request for Azure Key Vault secrets: " + e.getMessage());
+                throw new Exception(envelopeId + " | Error while executing request for Azure Key Vault secrets: " + e.getMessage());
             }
         } finally {
             lock.unlock();
