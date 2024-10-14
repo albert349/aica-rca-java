@@ -1,9 +1,5 @@
 package com.thegbfoods.aica_rca_java;
 
-import com.azure.identity.DefaultAzureCredentialBuilder;
-import com.azure.security.keyvault.secrets.SecretClient;
-import com.azure.security.keyvault.secrets.SecretClientBuilder;
-import com.azure.security.keyvault.secrets.models.KeyVaultSecret;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -42,6 +38,8 @@ public class NewFoodContract {
     private static Instant tokenExpiryTime = Instant.now();
     private static final ReentrantLock lock = new ReentrantLock();
     private static final CloseableHttpClient httpClient = HttpClients.createDefault();
+    private static final AzureKeyVaultService akvs = AzureKeyVaultService.getInstance();
+    private static EmailService emailService = null;
 
     /**
      * This function listens at endpoint "/api/NewFoodContract"
@@ -52,6 +50,7 @@ public class NewFoodContract {
                     HttpMethod.POST
             }, authLevel = AuthorizationLevel.FUNCTION) HttpRequestMessage<Optional<String>> request,
             final ExecutionContext context) {
+
         // Parse the request body
         String requestBody = request.getBody().orElse("");
         ObjectMapper mapper = new ObjectMapper();
@@ -70,9 +69,20 @@ public class NewFoodContract {
         try {
             envelopeId = jsonNode.get("data").get("envelopeId").asText();
         } catch (Exception e) {
-            context.getLogger().severe(envelopeId + " | Error: Couldn't find envelopeId.");
+            context.getLogger().severe("unknown | Error: Couldn't find envelopeId.");
             return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
-                    .body(envelopeId + " | Error: Couldn't find envelopeId.")
+                    .body("unknown | Error: Couldn't find envelopeId.")
+                    .build();
+        }
+
+        // Retrieve sender email for email notification
+        String emailSender = null;
+        try {
+            emailSender = jsonNode.get("data").get("envelopeSummary").get("sender").get("email").asText();
+        } catch (Exception e) {
+            context.getLogger().severe(envelopeId + " | Error: Couldn't find sender email.");
+            return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
+                    .body(envelopeId + " | Error: Couldn't find sender email.")
                     .build();
         }
 
@@ -107,12 +117,15 @@ public class NewFoodContract {
                 }
             }
 
+            // Check company_id
             if (companyId == null) {
                 context.getLogger().severe(envelopeId + " | Error: Couldn't find company_id.");
                 return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
                         .body(envelopeId + " | Error: Couldn't find company_id.")
                         .build();
             }
+
+            // Check producer_id
             if (producerId == null) {
                 context.getLogger().severe(envelopeId + " | Error: Couldn't find producer_id.");
                 return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
@@ -182,6 +195,13 @@ public class NewFoodContract {
                     .build();
         }
 
+        // Create MultipartEntity
+        HttpEntity multipartEntity = MultipartEntityBuilder.create()
+                .setMode(HttpMultipartMode.BROWSER_COMPATIBLE)
+                .addBinaryBody("files", tempFile, ContentType.DEFAULT_BINARY, tempFile.getName())
+                .addTextBody("metadata", jsonPart, ContentType.APPLICATION_JSON)
+                .build();
+
         // Get OAuth2 token
         String apiUrl = "https://integra-servicio.mapa.gob.es/wsregcontratosaica/servicioweb/nuevocontrato";
         String authToken;
@@ -200,13 +220,6 @@ public class NewFoodContract {
                     .build();
         }
 
-        // Create MultipartEntity
-        HttpEntity multipartEntity = MultipartEntityBuilder.create()
-                .setMode(HttpMultipartMode.BROWSER_COMPATIBLE)
-                .addBinaryBody("files", tempFile, ContentType.DEFAULT_BINARY, tempFile.getName())
-                .addTextBody("metadata", jsonPart, ContentType.APPLICATION_JSON)
-                .build();
-
         // Send the request to the external API
         try {
             HttpPost postRequest = new HttpPost(apiUrl);
@@ -214,19 +227,51 @@ public class NewFoodContract {
             postRequest.setHeader("Authorization", "Bearer " + authToken);
 
             try (CloseableHttpResponse response = httpClient.execute(postRequest)) {
-                String responseBody = EntityUtils.toString(response.getEntity());
+                if (emailService == null) {
+                    emailService = EmailService.getInstance();
+                }
                 int statusCode = response.getStatusLine().getStatusCode();
+                String responseBody = EntityUtils.toString(response.getEntity());
+                JsonNode responseJson = new ObjectMapper().readTree(responseBody);
+                String status = null;
+                String contractId = null;
+                String errorCode = null;
+                String errorDescription = null;
+                String initialEmailSubject = "AICA RCA: ";
+                String initialEmailBody = "Envelope ID: " + envelopeId + "\n" +
+                    "Enterprise ID: " + companyId + "\n" +
+                    "Provider ID: " + producerId + "\n";
 
-                // Return success
-                context.getLogger().info(envelopeId + " | Successfully created new contract to AICA RCA.");
+                if (statusCode == 200) {
+                    // Success
+                    status = responseJson.get("status").asText();
+                    contractId = responseJson.get("contract_id").asText();
+                    emailService.sendEmail(emailSender, initialEmailSubject + "OK | " + envelopeId, initialEmailBody +
+                        "Status: " + status + "\n" +
+                        "Contract ID: " + contractId + "\n");
                 return request.createResponseBuilder(HttpStatus.valueOf(statusCode))
+                            .body(responseBody)
+                            .build();
+                } else {
+                    // Error
+                    status = responseJson.get("status").asText();
+                    errorCode = responseJson.get("error_code").asText();
+                    errorDescription = responseJson.get("error_description").asText();
+                    context.getLogger().severe(envelopeId + " | Failed to create new contract to AICA RCA."
+                        + " | status = " + status + " | error_code = "+ errorCode + " | error_description = " + errorDescription);
+                    emailService.sendEmail(apiUrl, initialEmailSubject + "ERROR | " + envelopeId, responseBody +
+                        "Status: " + status + "\n" +
+                        "Error Code: " + errorCode + "\n" +
+                        "Error Description: " + errorDescription);
+                    return request.createResponseBuilder(HttpStatus.valueOf(statusCode))
                         .body(responseBody)
                         .build();
+                }
             }
         } catch (Exception e) {
-            context.getLogger().severe(envelopeId + " | Error: Failed to send POST request: " + e.getMessage());
+            context.getLogger().severe(envelopeId + " | Error: Failed to send POST request for NewFoodContract: " + e.getMessage());
             return request.createResponseBuilder(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(envelopeId + " | Error: Failed to send POST request: " + e.getMessage())
+                    .body(envelopeId + " | Error: Failed to send POST request for NewFoodContract: " + e.getMessage())
                     .build();
         }
     }
@@ -240,7 +285,6 @@ public class NewFoodContract {
             }
 
             // Retrieve ClientId and ClientSecret from Azure Key Vault in DEV or PRD
-            String keyVaultUri = "https://kv-docusign-integration.vault.azure.net";
             String kvsPrefix;
             String mode = System.getenv("mode");
 
@@ -250,35 +294,32 @@ public class NewFoodContract {
                 kvsPrefix = "PRD";
             }
 
-            String clientId = "3NWT3I";
-            String clientSecret = "b72q:0v2B1bZe.xd";
+            char[] clientId = null;
+            char[] clientSecret = null;
             try {
-                SecretClient secretClient = new SecretClientBuilder()
-                        .vaultUrl(keyVaultUri)
-                        .credential(new DefaultAzureCredentialBuilder().build())
-                        .buildClient();
-                KeyVaultSecret kvsClientId = secretClient.getSecret(kvsPrefix + "-AICA-CLIENT-ID");
-                KeyVaultSecret kvsClientSecret = secretClient.getSecret(kvsPrefix + "-AICA-CLIENT-SECRET");
-                clientId = kvsClientId.getValue();
-                clientSecret = kvsClientSecret.getValue();
+                clientId = akvs.getSecret(kvsPrefix + "-AICA-CLIENT-ID");
+                clientSecret = akvs.getSecret(kvsPrefix + "-AICA-CLIENT-SECRET");
+
+                if (clientId == null || clientSecret == null) {
+                    throw new Exception("clientId or clientSecret is null.");
+                }
             } catch (Exception e) {
-                context.getLogger().severe(envelopeId + " | Error while retrieving Azure Key Vault secrets: " + e.getMessage())
-                throw new Exception(envelopeId + " | Error while retrieving Azure Key Vault secrets: " + e.getMessage());
+                context.getLogger().severe("Error while retrieving Azure Key Vault secrets: " + e.getMessage());
+                throw new Exception("Error while retrieving Azure Key Vault secrets: " + e.getMessage());
             }
 
             // Request new token
             String tokenUrl = "https://integra-servicio.mapa.gob.es/wsregcontratosaica/oauth/token";
-            String tokenRequestPayload = "grant_type=client_credentials&client_id=" + clientId + "&client_secret=" +
-                    clientSecret;
             Long expiresIn = null;
 
             HttpPost tokenRequest = new HttpPost(tokenUrl);
             tokenRequest.setHeader("Content-Type", "application/x-www-form-urlencoded");
-            tokenRequest.setEntity(new StringEntity(tokenRequestPayload));
+            tokenRequest.setEntity(new StringEntity("grant_type=client_credentials&client_id=" + String.valueOf(clientId)
+                + "&client_secret=" + String.valueOf(clientSecret)));
 
             try (CloseableHttpResponse response = httpClient.execute(tokenRequest)) {
                 if (response.getStatusLine().getStatusCode() != 200) {
-                    throw new RuntimeException("Failed to get OAuth token");
+                    throw new RuntimeException("Failed to get OAuth2 token");
                 }
 
                 String responseBody = EntityUtils.toString(response.getEntity());
@@ -289,8 +330,8 @@ public class NewFoodContract {
 
                 return oauthToken;
             } catch (Exception e) {
-                context.getLogger().severe(envelopeId + " | Error while executing request for Azure Key Vault secrets: " + e.getMessage());
-                throw new Exception(envelopeId + " | Error while executing request for Azure Key Vault secrets: " + e.getMessage());
+                context.getLogger().severe("Failed to send POST request for OAuth2 token: " + e.getMessage());
+                throw new Exception("Failed to send POST request for OAuth2 token: " + e.getMessage());
             }
         } finally {
             lock.unlock();

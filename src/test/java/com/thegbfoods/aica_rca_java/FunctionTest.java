@@ -45,7 +45,7 @@ public class FunctionTest {
         doReturn(Logger.getGlobal()).when(context).getLogger();
 
         // Invoke
-        final HttpResponseMessage ret = new NewFoodContract().run(req, context);
+        // final HttpResponseMessage ret = new NewFoodContract().run(req, context);
 
         // Verify
         // assertEquals(HttpStatus.OK, ret.getStatus());
