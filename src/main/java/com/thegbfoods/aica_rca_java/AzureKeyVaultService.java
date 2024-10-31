@@ -5,14 +5,21 @@ import com.azure.security.keyvault.secrets.SecretClient;
 import com.azure.security.keyvault.secrets.SecretClientBuilder;
 
 public class AzureKeyVaultService {
-    private final static String keyVaultUri = "https://kv-docusign-integration.vault.azure.net";
-    private static AzureKeyVaultService instance;
-    private final SecretClient secretClient;
+    private static String _keyVaultUri;
+    private static AzureKeyVaultService _instance;
+    private final SecretClient _secretClient;
 
-    public AzureKeyVaultService() {
+    private AzureKeyVaultService() {
         try {
-            secretClient = new SecretClientBuilder()
-                .vaultUrl(keyVaultUri)
+            String mode = System.getenv("mode");
+
+            if (mode == null || mode == "DEV") {
+                _keyVaultUri = "https://kv-docusign-integration.vault.azure.net";
+            } else {
+                _keyVaultUri = "https://kv-docusign-int-pro.vault.azure.net/";
+            }
+            _secretClient = new SecretClientBuilder()
+                .vaultUrl(_keyVaultUri)
                 .credential(new DefaultAzureCredentialBuilder().build())
                 .buildClient();
         } catch (Exception e) {
@@ -20,25 +27,25 @@ public class AzureKeyVaultService {
         }
     }
 
-    public static AzureKeyVaultService getInstance() {
-        if (instance == null) {
+    public static AzureKeyVaultService GetInstance() {
+        if (_instance == null) {
             synchronized (AzureKeyVaultService.class) {
-                if (instance == null) {
+                if (_instance == null) {
                     try {
-                        instance = new AzureKeyVaultService();
+                        _instance = new AzureKeyVaultService();
                     } catch (Exception e) {
                         throw e;
                     }
                 }
             }
         }
-        return instance;
+        return _instance;
     }
 
     // Retrieve a secret value
     public char[] getSecret(String secretName) {
         try {
-            return secretClient.getSecret(secretName).getValue().toCharArray();
+            return _secretClient.getSecret(secretName).getValue().toCharArray();
         } catch (Exception e) {
             return null;
         }

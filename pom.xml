@@ -81,6 +81,32 @@
             <version>2.0.1</version>
         </dependency>
 
+        <!-- https://mvnrepository.com/artifact/com.microsoft.graph/microsoft-graph -->
+        <dependency>
+            <groupId>com.microsoft.graph</groupId>
+            <artifactId>microsoft-graph</artifactId>
+            <version>6.19.0</version>
+        </dependency>
+        <!-- https://mvnrepository.com/artifact/com.azure/azure-core -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-core</artifactId>
+            <version>1.53.0</version>
+        </dependency>
+        <!-- https://mvnrepository.com/artifact/com.microsoft.graph/microsoft-graph-auth -->
+        <dependency>
+            <groupId>com.microsoft.graph</groupId>
+            <artifactId>microsoft-graph-auth</artifactId>
+            <version>0.3.0</version>
+        </dependency>
+        <!-- https://mvnrepository.com/artifact/com.azure/azure-identity -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-identity</artifactId>
+            <version>1.14.0</version>
+            <scope>compile</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>

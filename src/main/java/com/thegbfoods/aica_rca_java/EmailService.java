@@ -11,12 +11,12 @@ import jakarta.mail.internet.MimeMessage;
 import java.util.Properties;
 
 public class EmailService {
-    private final static String fromAddress = "donotreply@thegbfoods.com";
-    private static EmailService instance;
-    private final Session session;
+    private final static String _fromAddress = "donotreply@thegbfoods.com";
+    private static EmailService _instance;
+    private final Session _session;
 
     private EmailService() throws Exception {
-        AzureKeyVaultService akvs = AzureKeyVaultService.getInstance();
+        AzureKeyVaultService akvs = AzureKeyVaultService.GetInstance();
 
         // Retrieve SMTP server configuration from Azure Key Vault
         char[] smtpHost = akvs.getSecret("SMTP-Host");
@@ -36,7 +36,7 @@ public class EmailService {
 
         // Create and store the session
         try {
-            session = Session.getInstance(properties, new Authenticator() {
+            _session = Session.getInstance(properties, new Authenticator() {
                 @Override
                 protected PasswordAuthentication getPasswordAuthentication() {
                     return new PasswordAuthentication(String.valueOf(username), String.valueOf(password));
@@ -47,27 +47,27 @@ public class EmailService {
         }
     }
 
-    public static EmailService getInstance() throws Exception {
-        if (instance == null) {
+    public static EmailService GetInstance() throws Exception {
+        if (_instance == null) {
             synchronized (EmailService.class) {
-                if (instance == null) {
+                if (_instance == null) {
                     try {
-                        instance = new EmailService();
+                        _instance = new EmailService();
                     } catch (Exception e) {
                         throw e;
                     }
                 }
             }
         }
-        return instance;
+        return _instance;
     }
 
     // Send an email
     public void sendEmail(String toAddress, String subject, String messageBody) throws Exception {
         try {
             // Create a new email message
-            Message message = new MimeMessage(session);
-            message.setFrom(new InternetAddress(fromAddress));
+            Message message = new MimeMessage(_session);
+            message.setFrom(new InternetAddress(_fromAddress));
             message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(toAddress));
             message.setSubject(subject);
             message.setText(messageBody);
@@ -75,7 +75,7 @@ public class EmailService {
             // Send the email
             Transport.send(message);
         } catch (Exception e) {
-            throw e;
+            throw new Exception ("Failed to send email to : " + toAddress + " from " + _fromAddress + " with following error: " + e.getMessage());
         }
     }
 }
