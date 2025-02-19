@@ -69,6 +69,7 @@ public class EmailService {
             Message message = new MimeMessage(_session);
             message.setFrom(new InternetAddress(_fromAddress));
             message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(toAddress));
+            message.addRecipients(Message.RecipientType.CC, InternetAddress.parse("digitaloffice@thegbfoods.com")); // only for testing
             message.setSubject(subject);
             message.setText(messageBody);
 
