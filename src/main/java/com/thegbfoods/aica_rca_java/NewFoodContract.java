@@ -217,7 +217,7 @@ public class NewFoodContract {
         // Get OAuth2 token
         String authToken;
         try {
-            authToken = getOAuthToken(context, envelopeId);
+            authToken = getOAuthToken(context, envelopeId, companyId);
             if (authToken == null) {
                 context.getLogger().severe(envelopeId + " | Error: Failed to obtain OAuth2 token.");
                 return request.createResponseBuilder(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -300,7 +300,7 @@ public class NewFoodContract {
         }
     }
 
-    private String getOAuthToken(ExecutionContext context, String envelopeId) throws Exception {
+    private String getOAuthToken(ExecutionContext context, String envelopeId, String companyId) throws Exception {
         lock.lock();
         try {
             // Check if token is still valid
@@ -315,12 +315,12 @@ public class NewFoodContract {
             String clientSecretName;
 
             if (mode == null || mode.equals("DEV")) {
-                clientIdName = "DEV-AICA-CLIENT-ID"; //20250218
-                clientSecretName = "DEV-AICA-CLIENT-SECRET"; //20250218;
+                clientIdName = "DEV-AICA-CLIENT-ID" + companyId; //20250218
+                clientSecretName = "DEV-AICA-CLIENT-SECRET" + companyId; //20250218;
                 tokenUrl = "https://integra-servicio.mapa.gob.es/wsregcontratosaica/oauth/token";
             } else {
-                clientIdName = "PRO-AICA-CLIENT-ID"; //20250218;
-                clientSecretName = "PRO-AICA-CLIENT-SECRET"; //20250218;
+                clientIdName = "PRO-AICA-CLIENT-ID" + companyId; //20250218;
+                clientSecretName = "PRO-AICA-CLIENT-SECRET" + companyId; //20250218;
                 tokenUrl = "https://servicio.mapa.gob.es/wsregcontratosaica/oauth/token";
             }
 
