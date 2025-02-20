@@ -51,6 +51,8 @@ public class NewFoodContract {
             }, authLevel = AuthorizationLevel.FUNCTION) HttpRequestMessage<Optional<String>> request,
             final ExecutionContext context) {
 
+        //Ajout log de l envelop 20250220
+        context.getLogger().info("Received request Body: " + request.getBody().orElse(""));
         // Parse the request body
         String requestBody = request.getBody().orElse("");
         ObjectMapper mapper = new ObjectMapper();
