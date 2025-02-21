@@ -70,6 +70,7 @@ public class NewFoodContract {
         String envelopeId = null;
         try {
             envelopeId = jsonNode.get("data").get("envelopeId").asText();
+            context.getLogger().info("envelopeId: " + envelopeId); //20250221 log envelopeId
         } catch (Exception e) {
             context.getLogger().severe("unknown | Error: Couldn't find envelopeId.");
             return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
@@ -118,7 +119,9 @@ public class NewFoodContract {
                     }
                 }
             }
-
+//20250221 log companyId and producerId
+            context.getLogger().info("companyId: " + companyId);
+            context.getLogger().info("producerId: " + producerId);
             // Check company_id
             if (companyId == null) {
                 context.getLogger().severe(envelopeId + " | Error: Couldn't find company_id.");
@@ -325,6 +328,9 @@ public class NewFoodContract {
                 clientSecretName = "PRO-AICA-CLIENT-SECRET" + companyId; //20250218;
                 tokenUrl = "https://servicio.mapa.gob.es/wsregcontratosaica/oauth/token";
             }
+//20250221 log clientIdName and clientSecretName
+            context.getLogger().info("clientIdName: " + clientIdName);
+            context.getLogger().info("clientSecretName: " + clientSecretName);
 
             char[] clientId = null;
             char[] clientSecret = null;
@@ -359,6 +365,8 @@ public class NewFoodContract {
                 oauthToken = responseJson.get("access_token").asText();
                 expiresIn = responseJson.get("expires_in").asLong();
                 tokenExpiryTime = Instant.now().plusSeconds(expiresIn).minusSeconds(60);
+//20250221 log the enw oauthToken
+                context.getLogger().info("New oauthToken" + oauthToken);
 
                 return oauthToken;
             } catch (Exception e) {
