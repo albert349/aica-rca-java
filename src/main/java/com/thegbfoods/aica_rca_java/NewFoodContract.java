@@ -52,7 +52,7 @@ public class NewFoodContract {
             final ExecutionContext context) {
 
         //Ajout log de l envelop 20250220
-        context.getLogger().info("Received request Body: " + request.getBody().orElse(""));
+    //    context.getLogger().info("Received request Body: " + request.getBody().orElse(""));
         // Parse the request body
         String requestBody = request.getBody().orElse("");
         ObjectMapper mapper = new ObjectMapper();
@@ -320,12 +320,12 @@ public class NewFoodContract {
             String clientSecretName;
 
             if (mode == null || mode.equals("DEV")) {
-                clientIdName = "DEV-AICA-CLIENT-ID" + companyId; //20250218
-                clientSecretName = "DEV-AICA-CLIENT-SECRET" + companyId; //20250218;
+                clientIdName = "DEV-AICA-CLIENT-ID-" + companyId; //20250218
+                clientSecretName = "DEV-AICA-CLIENT-SECRET-" + companyId; //20250218;
                 tokenUrl = "https://integra-servicio.mapa.gob.es/wsregcontratosaica/oauth/token";
             } else {
-                clientIdName = "PRO-AICA-CLIENT-ID" + companyId; //20250218;
-                clientSecretName = "PRO-AICA-CLIENT-SECRET" + companyId; //20250218;
+                clientIdName = "PRO-AICA-CLIENT-ID-" + companyId; //20250218;
+                clientSecretName = "PRO-AICA-CLIENT-SECRET-" + companyId; //20250218;
                 tokenUrl = "https://servicio.mapa.gob.es/wsregcontratosaica/oauth/token";
             }
 //20250221 log clientIdName and clientSecretName
@@ -377,4 +377,6 @@ public class NewFoodContract {
             lock.unlock();
         }
     }
+
+   
 }
