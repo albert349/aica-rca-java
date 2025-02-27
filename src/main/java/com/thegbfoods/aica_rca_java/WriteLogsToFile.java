@@ -4,7 +4,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 
-private void WriteLogsToFile(ExecutionContext context, String logMessage) {
+public class WriteLogsToFile(ExecutionContext context, String logMessage) {
     String logFileName = "log_" + System.currentTTimeMillis() + ".csv";
     File logFile = new File(System.getProperty("java.io.tmdir"), logFileName);
 
